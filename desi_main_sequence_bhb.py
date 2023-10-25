@@ -272,7 +272,18 @@ def log_probability(theta, x):
 
 
 def data_collect(testiron, flag, path, ramin, ramax, decmin, decmax, scale):
-
+    '''
+    collect data for the fitting
+    :param testiron: data including distance and velocity for the calculation
+    :param flag: flag for the selection of the data
+    :param path: path for the data
+    :param ramin: l min
+    :param ramax: l max
+    :param decmin: b min
+    :param decmax: b max
+    :param scale: scale for the data
+    :return: rlim (distance limit for the data), vlim (velocity limit for the data), vlim2 (velocity limit for the data), rlim2 (distance limit for the data)
+    '''
 
     iqk, = np.where((testiron['RVS_WARN'] == 0) & (testiron['RR_SPECTYPE'] != 'QSO') & (testiron['VSINI'] < 50)
 
@@ -359,6 +370,7 @@ def data_collect(testiron, flag, path, ramin, ramax, decmin, decmax, scale):
         fract.append(frac)
 
     return rlimf, test1f
+
 
 
 # t
@@ -583,6 +595,111 @@ for ii in np.arange(0, 360, 10):
                 continue
         except (ValueError):
             continue
+
+#code for BHB sample
+t = Table.read("BHB2500.txt", format="ascii.cds")
+#read in the data from DESI BHB
+testbhb = fits.open("Iron_BHB.fits")
+
+
+def data_collect_bhb(testbhb, flag, path, ramin, ramax, decmin, decmax, scale):
+    '''
+    function for collecting the data from the DESI BHB sample
+    :param testbhb: bhb catalog
+    :param flag: target selection flag
+    :param path: path for the data
+    :param ramin: l min
+    :param ramax: l max
+    :param decmin: b min
+    :param decmax: b max
+    :param scale: scale around the star for collecting the data
+    :return:rlim (the distance)/ test1f (vel difference between stars inside the patch and scale kpc around the star)
+    '''
+    ms = testbhb
+
+    ramin = ramin * u.degree
+    ramax = ramax * u.degree
+    decmin = decmin * u.degree
+    decmax = decmax * u.degree
+
+    ranew = ms[2].data['TARGET_RA'][(ms[2].data['dist'] > 20)]
+    decnew = ms[2].data['TARGET_DEC'][(ms[2].data['dist'] > 20)]
+    dist = ms[2].data['dist'][(ms[2].data['dist'] > 20)]
+
+    helio = SkyCoord(ra=ranew * u.degree, dec=decnew * u.degree, distance=dist * u.kpc)
+    galactic2 = helio.galactic
+
+    coord.galactocentric_frame_defaults.set('latest')
+    t = pd.DataFrame()
+    icrs = coord.SkyCoord(ra=ranew * u.deg, dec=decnew * u.deg,
+                          radial_velocity=ms[1].data['VRAD'][(ms[2].data['dist'] > 20)] * u.km / u.s, frame='icrs')
+    t['v'] = rv_to_gsr(icrs)
+    gal = helio.transform_to(coord.Galactocentric)
+
+    galc = gal.represent_as(coord.SphericalRepresentation)
+
+    R = np.array(galc.distance.to_value(u.kpc))
+    ms2 = pd.DataFrame()
+
+    ms2['x'] = gal.cartesian.x
+    ms2['y'] = gal.cartesian.y
+    ms2['z'] = gal.cartesian.z
+    ms2['r'] = R
+    ms2['v'] = t['v']
+
+    zmin = 20
+    zmax = 100
+    zlim = 4.
+
+    t = ms2
+
+    # cutting r and z > 20 & r < 60 kpc stars
+    df1 = pd.DataFrame()
+    df2 = pd.DataFrame()
+    df1['x'] = t['x'][(zmin < t['r']) & (t['r'] < zmax)]
+    df1['y'] = t['y'][(zmin < t['r']) & (t['r'] < zmax)]
+    df1['z'] = t['z'][(zmin < t['r']) & (t['r'] < zmax)]
+    df1['Vgal'] = t['v'][(zmin < t['r']) & (t['r'] < zmax)]
+    df1['r'] = t['r'][(zmin < t['r']) & (t['r'] < zmax)]
+    df2['r'] = df1['r'][(np.absolute(df1['z']) > zlim)]
+    df2['x'] = df1['x'][(np.absolute(df1['z']) > zlim)]
+    df2['y'] = df1['y'][(np.absolute(df1['z']) > zlim)]
+    df2['z'] = df1['z'][(np.absolute(df1['z']) > zlim)]
+    df2['Vgal'] = df1['Vgal'][(np.absolute(df1['z']) > zlim)]
+
+    # data for verifying Xue 2008 et al paper
+    df3 = pd.DataFrame()
+
+    df3['x'] = t['x'][(np.absolute(t['z']) > zlim)]
+    df3['y'] = t['y'][(np.absolute(t['z']) > zlim)]
+    df3['z'] = t['z'][(np.absolute(t['z']) > zlim)]
+    df3['Vgal'] = t['v'][(np.absolute(t['z']) > zlim)]
+    df3['r'] = t['r'][(np.absolute(t['z']) > zlim)]
+    df3['index'] = np.arange(0, len(df3['r']), 1)
+    # print (len(df3))
+    rlimf = []
+    test1f = []
+    numf = []
+    sepf = []
+    indexf = []
+    fract = []
+    for scale in [scale]:
+        rlim, test1, num, sep, frac = v_diff(scale, df3, 10, 5000, galactic2, ramin, ramax, decmin, decmax)
+
+        rlimf.append(rlim)
+        test1f.append(test1)
+        numf.append(num)
+        sepf.append(sep)
+        # indexf.append(indexii)
+        fract.append(frac)
+
+    return rlimf, test1f
+
+# t
+
+
+
+
 
 
 
